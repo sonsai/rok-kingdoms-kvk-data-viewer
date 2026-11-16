@@ -65,49 +65,29 @@ const server = http.createServer(async (req, res) => {
       const kingdomId = String(input.kingdomId || '');
       if (!/^\d{1,6}$/.test(kingdomId)) throw new Error('王国编号格式无效');
       task = { id: Date.now().toString(36), kingdomId, status: 'running', createdAt: new Date().toISOString() }; tasks.unshift(task);
-      const overviewUrl = `https://app.rokstats.online/kingdoms/${encodeURIComponent(kingdomId)}?lang=en`;
-      const overviewResponse = await fetch(overviewUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KVKStudio/1.0)' }, signal: AbortSignal.timeout(15000) });
-      if (!overviewResponse.ok) throw new Error(`ROKSTATS 未找到王国 ${kingdomId}（HTTP ${overviewResponse.status}）`);
-      const overviewHtml = await overviewResponse.text();
-      const title = pageText((overviewHtml.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)||[,''])[1]) || `Kingdom ${kingdomId}`;
-      const name = (title.match(/Kingdom\s+\d+\s*[—-]\s*(.+?)(?:\s*\||$)/i)||[])[1] || '';
-      const hrefs = [...overviewHtml.matchAll(/<a\b[^>]*href\s*=\s*(?:"([^"]+)"|'([^']+)')[^>]*>([\s\S]*?)<\/a>/gi)].map(m=>({ href:m[1]||m[2], text:pageText(m[3]) }));
-      let dashboardUrl = hrefs.map(a=>a.href).find(h=>/\/kvk\/dashboard\//i.test(h));
-      const currentUrl = hrefs.map(a=>a.href).find(h=>/\/kvk\/lost-kingdoms\/current/i.test(h));
-      if (dashboardUrl && dashboardUrl.startsWith('/')) dashboardUrl = `https://app.rokstats.online${dashboardUrl}`;
-      let dashboardHtml = '';
-      if (dashboardUrl) {
-        const dashboardResponse = await fetch(dashboardUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KVKStudio/1.0)' }, signal: AbortSignal.timeout(15000) });
-        if (dashboardResponse.ok) dashboardHtml = await dashboardResponse.text();
-      }
-      let currentHtml = '';
-      if (!dashboardHtml && currentUrl) {
-        const currentResponse = await fetch(new URL(currentUrl, overviewUrl), { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KVKStudio/1.0)' }, signal: AbortSignal.timeout(15000) });
-        if (currentResponse.ok) currentHtml = await currentResponse.text();
-        const kingdomPos = currentHtml.indexOf(kingdomId);
-        if (kingdomPos >= 0) {
-          const rowStart = currentHtml.lastIndexOf('<tr', kingdomPos);
-          const rowEnd = currentHtml.indexOf('</tr>', kingdomPos);
-          const kingdomRow = rowStart >= 0 && rowEnd > kingdomPos ? currentHtml.slice(rowStart, rowEnd + 5) : currentHtml.slice(Math.max(0, kingdomPos - 1200), kingdomPos + 1200);
-          const target = [...kingdomRow.matchAll(/(?:href\s*=\s*"([^"]+)"|href\s*=\s*'([^']+)')/gi)].map(m=>m[1]||m[2]).find(h=>/\/kvk\/(?:dashboard|lost-kingdoms)\//i.test(h));
-          if (target) {
-            const detailUrl = new URL(target, overviewUrl).href;
-            const detailResponse = await fetch(detailUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KVKStudio/1.0)' }, signal: AbortSignal.timeout(15000) });
-            if (detailResponse.ok) { dashboardHtml = await detailResponse.text(); dashboardUrl = detailUrl; }
-          }
-        }
-      }
-      const text = pageText(dashboardHtml);
-      const pick = patterns => { for (const pattern of patterns) { const m=text.match(pattern); if(m) return Number(m[1].replace(/,/g,'')); } return null; };
-      const dashboardHasData = Boolean(dashboardHtml) && !/Failed to load (?:basic|dashboard) data|No camp statistics available|No scan periods available/i.test(text);
+      const source = new URL('https://app.rokstats.online/api/kingdoms/seed-ranking/kvk-performance');
+      source.searchParams.set('kingdoms', kingdomId);
+      source.searchParams.set('limit', '10');
+      source.searchParams.set('includeSelectionMeta', '0');
+      const response = await fetch(source, { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (compatible; KVKStudio/1.0)' }, signal: AbortSignal.timeout(20000) });
+      if (!response.ok) throw new Error(`ROKSTATS 接口返回 HTTP ${response.status}`);
+      const payload = await response.json();
+      if (payload.success === false) throw new Error(payload.error || `ROKSTATS 无法读取王国 ${kingdomId}`);
+      const recentKvks = payload.byKingdom?.[kingdomId]?.recentKvks;
+      if (!Array.isArray(recentKvks) || recentKvks.length === 0) throw new Error(`ROKSTATS 没有王国 ${kingdomId} 的 recentKvks 数据。`);
+      const kvk = recentKvks.reduce((latest, item) => Number(item.lkCode) > Number(latest.lkCode) ? item : latest);
       const stats = {
-        kp: dashboardHasData ? pick([/(?:Kill\s*Points|KP)[^\d]{0,50}([\d,]+)/i]) : null, deaths: dashboardHasData ? pick([/(?:Dead\s*Troops|Deaths|Dead)[^\d]{0,50}([\d,]+)/i]) : null,
-        t4: dashboardHasData ? pick([/T4[^\d]{0,40}([\d,]+)/i]) : null, t5: dashboardHasData ? pick([/T5[^\d]{0,40}([\d,]+)/i]) : null, players: dashboardHasData ? pick([/(?:Governors|Players|Participants)[^\d]{0,40}([\d,]+)/i]) : null, power: null
+        players: kvk.trackedPlayers ?? null,
+        kp: kvk.kp ?? null,
+        deaths: kvk.dead ?? null,
+        t4: kvk.t4 ?? null,
+        t5: kvk.t5 ?? null,
+        power: kvk.powerDiff ?? null,
+        participants: kvk.participants ?? null,
+        acclaim: kvk.acclaim ?? null,
+        healed: kvk.healed ?? null
       };
-      const hasStats = Object.values(stats).some(value=>value !== null);
-      const source = dashboardUrl || currentUrl || overviewUrl;
-      if (!hasStats) throw new Error(`王国 ${kingdomId} 页面可访问，但未找到可公开读取的 KvK 统计。可能需要 ROKSTATS 登录权限，或该王国尚无公开 KvK 扫描。`);
-      const result = { kingdomId, name: name.trim(), season: '最新可用 KvK', scannedAt: new Date().toISOString(), stats, dashboardUrl: source, sourceTitle: title };
+      const result = { kingdomId, name: '', season: `Season ${kvk.season} · LK ${kvk.lkCode}`, lkCode: kvk.lkCode, seasonNumber: kvk.season, openTime: kvk.openTime, closeTime: kvk.closeTime, scannedAt: new Date().toISOString(), stats, dashboardUrl: source.href, sourceTitle: `ROKSTATS KvK Performance · LK ${kvk.lkCode}` };
       Object.assign(task, { ...result, status: 'completed' });
       return send(res, 200, result);
     } catch (error) { if (task) { task.status='failed'; task.error=error.message; } return send(res, 422, { error:error.message, task }); }
@@ -123,3 +103,4 @@ const server = http.createServer(async (req, res) => {
   fs.readFile(target, (err, content) => { if (err) return send(res, 404, { error: 'Not found' }); res.writeHead(200, { 'Content-Type': mime[path.extname(target)] || 'application/octet-stream' }); res.end(content); });
 });
 server.listen(PORT, () => console.log(`Data Studio running at http://localhost:${PORT}`));
+
