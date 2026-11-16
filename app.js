@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const storeKey = 'kvk-studio-data-v1';
+const storeKey = 'kvk-studio-data-v2';
 let records = JSON.parse(localStorage.getItem(storeKey) || '[]');
 let currentView = 'all';
 let selectedKingdom = 'all';
@@ -61,3 +61,4 @@ $$('.segment').forEach(button=>button.addEventListener('click',()=>{$$('.segment
 $('#download-btn').addEventListener('click',()=>{const data=selectedRows();if(!data.length)return;const blob=new Blob([JSON.stringify(data.map(({kingdomId,name,season,scannedAt,stats,dashboardUrl})=>({kingdomId,name,season,scannedAt,stats,dashboardUrl})),null,2)],{type:'application/json'});const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='kvk-performance.json';link.click();URL.revokeObjectURL(link.href);});
 $('#refresh-btn').addEventListener('click',()=>{render();const toast=$('#toast');toast.textContent='记录已刷新';toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1800);});
 render();
+
