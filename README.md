@@ -14,6 +14,6 @@ node server.js
 
 ## 数据来源与限制
 
-服务端读取 `https://app.rokstats.online/kingdoms/{王国编号}` 王国公开页，并尝试定位该王国关联的 KvK 仪表板。ROKSTATS 只有在提供公开可读取的 KvK 统计时才会显示数值；若页面需要登录权限、当前扫描无数据或上游页面结构变化，采集记录会显示原因。应用不会用模拟数字填充真实战绩。
+服务端调用 ROKSTATS 的 `/api/kingdoms/seed-ranking/kvk-performance` JSON 接口，并按王国编号请求数据。每个王国从 `recentKvks` 中选取 `lkCode` 最大的记录作为最新 KvK，单国详情和多国汇总均使用该记录中的实际统计值。没有 `recentKvks` 时，采集记录会显示接口返回的原因。
 
-KvK 击杀、阵亡等表现通常需要至少两个时间点的扫描才能计算变化量。目标王国若没有公开的可用扫描，应用无法从单次王国总览推断 KvK 表现。
+
