@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: rok-kingdoms-kvk-data-viewer
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
