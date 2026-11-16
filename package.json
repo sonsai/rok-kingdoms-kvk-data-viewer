@@ -1,0 +1,12 @@
+{
+  "name": "rok-kingdoms-kvk-data-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rise of Kingdoms KvK performance viewer powered by ROKSTATS public pages",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
