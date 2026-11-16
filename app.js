@@ -8,9 +8,19 @@ function number(value) { return Number(value || 0).toLocaleString('en-US'); }
 function esc(value='') { return String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char])); }
 function normalized(raw) { return [...new Set(raw.split(/[\s,，;；\n]+/).map(x => x.trim()).filter(Boolean))]; }
 function showMessage(message, kind='') { const el = $('#form-message'); el.textContent = message; el.className = `form-message ${kind}`; }
-function selectedRows() { return records.filter(r => r.status === 'completed' && (selectedKingdom === 'all' || String(r.kingdomId) === selectedKingdom)); }
+function latestByKingdom(rows) {
+  const latest = new Map();
+  for (const row of rows.filter(r => r.status === 'completed')) {
+    const id = String(row.kingdomId);
+    const timestamp = Date.parse(row.scannedAt || row.createdAt) || 0;
+    const previous = latest.get(id);
+    if (!previous || timestamp >= previous.timestamp) latest.set(id, { row, timestamp });
+  }
+  return [...latest.values()].map(item => item.row);
+}
+function selectedRows() { return latestByKingdom(records).filter(r => selectedKingdom === 'all' || String(r.kingdomId) === selectedKingdom); }
 function render() {
-  const ok = records.filter(r=>r.status==='completed');
+  const ok = latestByKingdom(records);
   $('#stat-kingdoms').textContent = new Set(ok.map(r=>r.kingdomId)).size;
   const stats = ok.map(r=>r.stats || {});
   const sum = key => stats.reduce((acc,row)=>acc+(Number(row[key])||0),0);
@@ -19,7 +29,7 @@ function render() {
   $('#stat-kp').textContent = has('kp') ? compact(sum('kp')) : '—';
   const latest = ok.map(r=>r.scannedAt).filter(Boolean).sort().at(-1);
   $('#stat-date').textContent = latest ? new Date(latest).toLocaleDateString('zh-CN') : '暂无';
-  const unique = [...new Map(ok.map(r=>[String(r.kingdomId),r])).values()];
+  const unique = ok;
   $('#kingdom-tabs').innerHTML = `<button class="kingdom-tab ${selectedKingdom==='all'?'active':''}" data-id="all">全部王国</button>` + unique.map(r=>`<button class="kingdom-tab ${selectedKingdom===String(r.kingdomId)?'active':''}" data-id="${esc(r.kingdomId)}">王国 ${esc(r.kingdomId)}</button>`).join('');
   $$('#kingdom-tabs button').forEach(btn=>btn.onclick=()=>{selectedKingdom=btn.dataset.id;render();});
   const data = selectedRows();
@@ -34,6 +44,7 @@ function render() {
   $('#table-wrap').hidden = history.length===0;
   $('#task-rows').innerHTML = history.map(r=>`<tr><td class="kingdom-name">王国 ${esc(r.kingdomId)}</td><td>${esc(r.season||'—')}</td><td><span class="status-tag ${r.status==='failed'?'fail':''}">${r.status==='completed'?'已完成':r.status==='running'?'采集中':'未获取'}</span></td><td>${new Date(r.createdAt).toLocaleString('zh-CN')}</td><td>${r.dashboardUrl?`<a href="${esc(r.dashboardUrl)}" target="_blank" rel="noreferrer">查看来源 ↗</a>`:esc(r.error||'—')}</td></tr>`).join('');
   $('#download-btn').disabled = !data.length;
+  $('#clear-data-btn').disabled = records.length === 0;
   localStorage.setItem(storeKey, JSON.stringify(records));
 }
 function compact(n) { n=Number(n)||0; if(n>=1e9)return `${(n/1e9).toFixed(2)}B`; if(n>=1e6)return `${(n/1e6).toFixed(2)}M`; if(n>=1e3)return `${(n/1e3).toFixed(1)}K`; return number(n); }
@@ -59,6 +70,7 @@ $('#scrape-form').addEventListener('submit',async event=>{
 });
 $$('.segment').forEach(button=>button.addEventListener('click',()=>{$$('.segment').forEach(x=>x.classList.toggle('active',x===button));currentView=button.dataset.view;render();}));
 $('#download-btn').addEventListener('click',()=>{const data=selectedRows();if(!data.length)return;const blob=new Blob([JSON.stringify(data.map(({kingdomId,name,season,scannedAt,stats,dashboardUrl})=>({kingdomId,name,season,scannedAt,stats,dashboardUrl})),null,2)],{type:'application/json'});const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='kvk-performance.json';link.click();URL.revokeObjectURL(link.href);});
+$('#clear-data-btn').addEventListener('click',()=>{if(!records.length)return;if(!window.confirm('清除当前采集记录和汇总数据？清除后需要重新获取王国数据。'))return;records=[];selectedKingdom='all';localStorage.removeItem(storeKey);render();showMessage('当前数据已清除，可以重新获取并汇总。','success');});
 $('#refresh-btn').addEventListener('click',()=>{render();const toast=$('#toast');toast.textContent='记录已刷新';toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1800);});
 render();
 
