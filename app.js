@@ -2,6 +2,8 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const storeKey = 'kvk-studio-data-v2';
 const languageKey = 'kvk-studio-language';
+const groupStoreKey = 'kvk-studio-groups-v1';
+let kingdomGroups = JSON.parse(localStorage.getItem(groupStoreKey) || '{}');
 const originalText = new WeakMap();
 const originalAttributes = new WeakMap();
 const traditionalChars = {国:'國',战:'戰',绩:'績',总:'總',览:'覽',采:'採',现:'現',汇:'匯',数:'數',据:'據',时:'時',间:'間',参:'參',与:'與',击:'擊',杀:'殺',点:'點',阵:'陣',队:'隊',输:'輸',编:'編',号:'號',动:'動',选:'選',择:'擇',录:'錄',仅:'僅',访:'訪',问:'問',确:'確',认:'認',当:'當',显:'顯',语:'語',简:'簡',体:'體',导:'導',获:'獲',后:'後',这:'這',里:'裡',为:'為',于:'於',还:'還',没:'沒',请:'請',询:'詢',标:'標',题:'題',单:'單',个:'個',开:'開',并:'並',会:'會',关:'關',须:'須',员:'員',经:'經',过:'過',统:'統',计:'計',况:'況',详:'詳',态:'態',识:'識',观:'觀',视:'視',缩:'縮',变:'變',样:'樣',药:'藥',暂:'暫',独:'獨',对:'對',来:'來',们:'們',华:'華',兴:'興',条:'條',约:'約',达:'達',发:'發',长:'長',载:'載',级:'級',声:'聲',应:'應',将:'將',无:'無',该:'該',结:'結',构:'構',错:'錯',误:'誤',页:'頁',宽:'寬',扫:'掃',内:'內',际:'際',报:'報',仪:'儀',较:'較',准:'準',败:'敗',试:'試',尝:'嘗',权:'權',户:'戶',实:'實',为:'為',则:'則',并:'並',难:'難',处:'處',发:'發',动:'動',终:'終',线:'線',联:'聯',网:'網',历:'歷',区:'區',别:'別',发:'發',场:'場',达:'達',条:'條',选:'選',项:'項',额:'額',帮:'幫',助:'助',爱:'愛',礼:'禮'};
@@ -50,6 +52,38 @@ function latestByKingdom(rows) {
   return [...latest.values()].map(item => item.row);
 }
 function selectedRows() { return latestByKingdom(records).filter(r => selectedKingdom === 'all' || String(r.kingdomId) === selectedKingdom); }
+function renderGroups(rows) {
+  const board = $('#group-board');
+  if (!board) return;
+  const labels = ['A','B','C','D','E','F'];
+  board.innerHTML = labels.map(label => {
+    const members = rows.filter(row => kingdomGroups[String(row.kingdomId)] === label);
+    const total = key => members.reduce((sum, row) => sum + (Number(row.stats?.[key]) || 0), 0);
+    return `<section class="group-column" data-group="${label}" aria-label="${label} 组"><header><span class="group-badge">${label}</span><strong>${label} 组</strong><small>${members.length} 个王国</small></header><div class="group-totals"><span>人数 <b>${number(total('players'))}</b></span><span>KP <b>${compact(total('kp'))}</b></span><span>阵亡 <b>${compact(total('deaths'))}</b></span><span>T4/T5 <b>${compact(total('t4'))}/${compact(total('t5'))}</b></span></div><div class="group-members">${members.map(row => `<article class="group-kingdom" draggable="true" data-kingdom="${esc(row.kingdomId)}"><span>王国 ${esc(row.kingdomId)}</span><select aria-label="王国 ${esc(row.kingdomId)} 分组" data-assign="${esc(row.kingdomId)}"><option value="">未分组</option>${labels.map(option => `<option value="${option}" ${option===label?'selected':''}>${option} 组</option>`).join('')}</select></article>`).join('') || '<div class="group-empty">拖动王国到此处</div>'}</div></section>`;
+  }).join('') + `<section class="group-column ungrouped-column" data-group=""><header><span class="group-badge neutral">—</span><strong>未分组</strong><small>${rows.filter(row => !kingdomGroups[String(row.kingdomId)]).length} 个王国</small></header><div class="group-totals"><span>未分组王国</span></div><div class="group-members">${rows.filter(row => !kingdomGroups[String(row.kingdomId)]).map(row => `<article class="group-kingdom" draggable="true" data-kingdom="${esc(row.kingdomId)}"><span>王国 ${esc(row.kingdomId)}</span><select aria-label="王国 ${esc(row.kingdomId)} 分组" data-assign="${esc(row.kingdomId)}"><option value="" selected>未分组</option>${labels.map(option => `<option value="${option}">${option} 组</option>`).join('')}</select></article>`).join('') || '<div class="group-empty">全部王国已分组</div>'}</div></section>`;
+  $$('[data-assign]').forEach(select => select.addEventListener('change', () => {
+    const id = select.dataset.assign;
+    if (select.value) kingdomGroups[id] = select.value; else delete kingdomGroups[id];
+    localStorage.setItem(groupStoreKey, JSON.stringify(kingdomGroups));
+    render();
+  }));
+  $$('.group-kingdom[draggable="true"]').forEach(card => card.addEventListener('dragstart', event => {
+    event.dataTransfer.setData('text/plain', card.dataset.kingdom);
+    event.dataTransfer.effectAllowed = 'move';
+  }));
+  $$('.group-column').forEach(column => {
+    column.addEventListener('dragover', event => { event.preventDefault(); column.classList.add('drag-over'); });
+    column.addEventListener('dragleave', event => { if (!column.contains(event.relatedTarget)) column.classList.remove('drag-over'); });
+    column.addEventListener('drop', event => {
+      event.preventDefault(); column.classList.remove('drag-over');
+      const id = event.dataTransfer.getData('text/plain');
+      if (!id) return;
+      if (column.dataset.group) kingdomGroups[id] = column.dataset.group; else delete kingdomGroups[id];
+      localStorage.setItem(groupStoreKey, JSON.stringify(kingdomGroups));
+      render();
+    });
+  });
+}
 function render() {
   const ok = latestByKingdom(records);
   $('#stat-kingdoms').textContent = new Set(ok.map(r=>r.kingdomId)).size;
@@ -64,6 +98,7 @@ function render() {
   $('#kingdom-tabs').innerHTML = `<button class="kingdom-tab ${selectedKingdom==='all'?'active':''}" data-id="all">全部王国</button>` + unique.map(r=>`<button class="kingdom-tab ${selectedKingdom===String(r.kingdomId)?'active':''}" data-id="${esc(r.kingdomId)}">王国 ${esc(r.kingdomId)}</button>`).join('');
   $$('#kingdom-tabs button').forEach(btn=>btn.onclick=()=>{selectedKingdom=btn.dataset.id;render();});
   const data = selectedRows();
+  renderGroups(ok);
   const one = currentView==='kingdom' && selectedKingdom==='all' ? data[0] : null;
   const chosen = one ? [one] : data;
   const total = key => chosen.reduce((acc,r)=>acc+(Number(r.stats?.[key])||0),0);
@@ -102,7 +137,7 @@ $('#scrape-form').addEventListener('submit',async event=>{
 });
 $$('.segment').forEach(button=>button.addEventListener('click',()=>{$$('.segment').forEach(x=>x.classList.toggle('active',x===button));currentView=button.dataset.view;render();}));
 $('#download-btn').addEventListener('click',()=>{const data=selectedRows();if(!data.length)return;const blob=new Blob([JSON.stringify(data.map(({kingdomId,name,season,scannedAt,stats,dashboardUrl})=>({kingdomId,name,season,scannedAt,stats,dashboardUrl})),null,2)],{type:'application/json'});const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='kvk-performance.json';link.click();URL.revokeObjectURL(link.href);});
-$('#clear-data-btn').addEventListener('click',()=>{if(!records.length)return;if(!window.confirm(t('清除当前采集记录和汇总数据？清除后需要重新获取王国数据。')))return;records=[];selectedKingdom='all';localStorage.removeItem(storeKey);render();showMessage('当前数据已清除，可以重新获取并汇总。','success');});
+$('#clear-data-btn').addEventListener('click',()=>{if(!records.length)return;if(!window.confirm(t('清除当前采集记录和汇总数据？清除后需要重新获取王国数据。')))return;records=[];kingdomGroups={};selectedKingdom='all';localStorage.removeItem(storeKey);localStorage.removeItem(groupStoreKey);render();showMessage('当前数据已清除，可以重新获取并汇总。','success');});
 $('#refresh-btn').addEventListener('click',()=>{render();const toast=$('#toast');toast.textContent='记录已刷新';toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),1800);});
 $('#language-select').addEventListener('change', event => { language = event.target.value; localStorage.setItem(languageKey, language); render(); });
 render();
