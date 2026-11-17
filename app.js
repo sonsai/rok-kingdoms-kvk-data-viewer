@@ -4,6 +4,12 @@ const storeKey = 'kvk-studio-data-v2';
 const languageKey = 'kvk-studio-language';
 const groupStoreKey = 'kvk-studio-groups-v1';
 let kingdomGroups = JSON.parse(localStorage.getItem(groupStoreKey) || '{}');
+const legacyGroups = {A:'地',B:'风',C:'水',D:'火'};
+for (const [kingdomId, group] of Object.entries(kingdomGroups)) {
+  if (legacyGroups[group]) kingdomGroups[kingdomId] = legacyGroups[group];
+  else if (!['地','风','水','火'].includes(group)) delete kingdomGroups[kingdomId];
+}
+localStorage.setItem(groupStoreKey, JSON.stringify(kingdomGroups));
 const originalText = new WeakMap();
 const originalAttributes = new WeakMap();
 const traditionalChars = {国:'國',战:'戰',绩:'績',总:'總',览:'覽',采:'採',现:'現',汇:'匯',数:'數',据:'據',时:'時',间:'間',参:'參',与:'與',击:'擊',杀:'殺',点:'點',阵:'陣',队:'隊',输:'輸',编:'編',号:'號',动:'動',选:'選',择:'擇',录:'錄',仅:'僅',访:'訪',问:'問',确:'確',认:'認',当:'當',显:'顯',语:'語',简:'簡',体:'體',导:'導',获:'獲',后:'後',这:'這',里:'裡',为:'為',于:'於',还:'還',没:'沒',请:'請',询:'詢',标:'標',题:'題',单:'單',个:'個',开:'開',并:'並',会:'會',关:'關',须:'須',员:'員',经:'經',过:'過',统:'統',计:'計',况:'況',详:'詳',态:'態',识:'識',观:'觀',视:'視',缩:'縮',变:'變',样:'樣',药:'藥',暂:'暫',独:'獨',对:'對',来:'來',们:'們',华:'華',兴:'興',条:'條',约:'約',达:'達',发:'發',长:'長',载:'載',级:'級',声:'聲',应:'應',将:'將',无:'無',该:'該',结:'結',构:'構',错:'錯',误:'誤',页:'頁',宽:'寬',扫:'掃',内:'內',际:'際',报:'報',仪:'儀',较:'較',准:'準',败:'敗',试:'試',尝:'嘗',权:'權',户:'戶',实:'實',为:'為',则:'則',并:'並',难:'難',处:'處',发:'發',动:'動',终:'終',线:'線',联:'聯',网:'網',历:'歷',区:'區',别:'別',发:'發',场:'場',达:'達',条:'條',选:'選',项:'項',额:'額',帮:'幫',助:'助',爱:'愛',礼:'禮'};
@@ -55,7 +61,7 @@ function selectedRows() { return latestByKingdom(records).filter(r => selectedKi
 function renderGroups(rows) {
   const board = $('#group-board');
   if (!board) return;
-  const labels = ['A','B','C','D','E','F'];
+  const labels = ['地','风','水','火'];
   board.innerHTML = labels.map(label => {
     const members = rows.filter(row => kingdomGroups[String(row.kingdomId)] === label);
     const total = key => members.reduce((sum, row) => sum + (Number(row.stats?.[key]) || 0), 0);
